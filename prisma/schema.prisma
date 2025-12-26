@@ -1,0 +1,151 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum JourneyType {
+  DIRECT
+  LAYOVER
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  BLOCKED
+}
+
+enum MessageType {
+  TEXT
+  SYSTEM
+}
+
+model User {
+  id           String      @id @default(uuid())
+  firstName    String
+  lastName     String
+  email        String      @unique
+  passwordHash String
+  dateOfBirth  DateTime
+  role         UserRole    @default(USER)
+  isActive     Boolean     @default(true)
+
+  journeys     Journey[]
+  sentMatches  Match[]     @relation("SentMatches")
+  receivedMatches Match[]  @relation("ReceivedMatches")
+  refreshTokens RefreshToken[]
+  messages      Message[] 
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+}
+
+model Journey {
+  id            String       @id @default(uuid())
+  userId        String
+  journeyType   JourneyType
+  flightNumber  String
+  departureAirport String
+  arrivalAirport   String
+  departureTime DateTime
+  arrivalTime   DateTime
+
+  user          User         @relation(fields: [userId], references: [id])
+  legs        JourneyLeg[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([flightNumber, departureTime])
+}
+
+model JourneyLeg {
+  id                String   @id @default(uuid())
+  journeyId         String
+  sequence          Int
+  flightNumber      String
+  departureAirport  String
+  arrivalAirport    String
+  departureTime     DateTime
+  arrivalTime       DateTime
+
+  layoverMinutes    Int?    
+
+  journey           Journey  @relation(fields: [journeyId], references: [id])
+  matches           Match[]
+
+  createdAt         DateTime @default(now())
+
+  @@unique([journeyId, sequence])
+  @@index([flightNumber, departureTime])
+}
+
+model Match {
+  id            String       @id @default(uuid())
+  journeyLegId     String
+  senderId      String
+  receiverId    String
+  status        MatchStatus  @default(PENDING)
+
+  journeyLeg   JourneyLeg  @relation(fields: [journeyLegId], references: [id])
+  sender        User         @relation("SentMatches", fields: [senderId], references: [id])
+  receiver      User         @relation("ReceivedMatches", fields: [receiverId], references: [id])
+  chat          Chat?
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([journeyLegId, senderId, receiverId])
+}
+
+model Chat {
+  id        String     @id @default(uuid())
+  matchId  String     @unique
+
+  match    Match      @relation(fields: [matchId], references: [id])
+  messages Message[]
+
+  createdAt DateTime  @default(now())
+}
+
+model Message {
+  id        String       @id @default(uuid())
+  chatId   String
+  senderId String
+  type     MessageType  @default(TEXT)
+  content  String
+
+  chat     Chat         @relation(fields: [chatId], references: [id])
+  sender   User         @relation(fields: [senderId], references: [id])
+
+  createdAt DateTime    @default(now())
+
+  @@index([chatId, createdAt])
+}
+
+model RefreshToken {
+  id        String     @id @default(uuid())
+  userId    String
+  token     String     @unique
+  expiresAt DateTime
+  revoked   Boolean    @default(false)
+
+  user      User       @relation(fields: [userId], references: [id])
+
+  createdAt DateTime   @default(now())
+}
