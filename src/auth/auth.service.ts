@@ -155,7 +155,7 @@ export class AuthService {
     try {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       payload = await this.jwtService.verifyAsync(dto.refreshToken, {
-        secret: process.env.refreshTokenSecret,
+        secret: this.refreshTokenSecret,
       });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
