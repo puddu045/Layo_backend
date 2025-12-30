@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class MatchesService {
@@ -169,7 +170,7 @@ export class MatchesService {
     }
 
     // Transaction: update match + create chat
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const updatedMatch = await tx.match.update({
         where: { id: matchId },
         data: {
@@ -181,6 +182,21 @@ export class MatchesService {
         data: {
           matchId: matchId,
         },
+      });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      await tx.chatReadState.createMany({
+        data: [
+          {
+            chatId: chat.id,
+            userId: match.senderId,
+            lastReadAt: new Date(0),
+          },
+          {
+            chatId: chat.id,
+            userId: match.receiverId,
+            lastReadAt: new Date(0),
+          },
+        ],
       });
 
       return {

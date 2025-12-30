@@ -53,6 +53,8 @@ model User {
 
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+
+  chatReadStates ChatReadState[]
 }
 
 model Journey {
@@ -120,6 +122,8 @@ model Chat {
   messages Message[]
 
   createdAt DateTime  @default(now())
+
+  chatReadStates ChatReadState[]
 }
 
 model Message {
@@ -136,6 +140,20 @@ model Message {
 
   @@index([chatId, createdAt])
 }
+
+model ChatReadState {
+  id        String   @id @default(uuid())
+  chatId   String
+  userId   String
+  lastReadAt DateTime
+
+  chat     Chat     @relation(fields: [chatId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([chatId, userId])
+  @@index([userId])
+}
+
 
 model RefreshToken {
   id        String     @id @default(uuid())
