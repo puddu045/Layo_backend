@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from '@nestjs/config';
 import { JourneysModule } from './journeys/journeys.module';
 import { MatchesModule } from './matches/matches.module';
+import { ChatsModule } from './chats/chats.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MatchesModule } from './matches/matches.module';
     AuthModule,
     JourneysModule,
     MatchesModule,
+    ChatsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
