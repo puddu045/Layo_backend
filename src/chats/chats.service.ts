@@ -29,13 +29,55 @@ export class ChatsService {
 
     return Promise.all(
       chats.map(async (chat) => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         const lastReadAt = chat.chatReadStates[0]?.lastReadAt ?? new Date(0);
 
         const unreadCount = await this.prisma.message.count({
           where: {
             chatId: chat.id,
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
+            createdAt: { gt: lastReadAt },
+            senderId: { not: userId },
+          },
+        });
+
+        return {
+          ...chat,
+          unreadCount,
+        };
+      }),
+    );
+  }
+
+  async getChatsForUserByJourneyLeg(userId: string, journeyLegId: string) {
+    const chats = await this.prisma.chat.findMany({
+      where: {
+        match: {
+          journeyLegId, // 🔑 the only new condition
+          OR: [{ senderId: userId }, { receiverId: userId }],
+        },
+      },
+      include: {
+        match: {
+          include: {
+            sender: { select: { id: true, firstName: true } },
+            receiver: { select: { id: true, firstName: true } },
+          },
+        },
+        chatReadStates: {
+          where: { userId },
+          select: { lastReadAt: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return Promise.all(
+      chats.map(async (chat) => {
+        const lastReadAt = chat.chatReadStates[0]?.lastReadAt ?? new Date(0);
+
+        const unreadCount = await this.prisma.message.count({
+          where: {
+            chatId: chat.id,
             createdAt: { gt: lastReadAt },
             senderId: { not: userId },
           },
@@ -125,9 +167,7 @@ export class ChatsService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async markChatAsRead(chatId: string, userId: string) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     return this.prisma.chatReadState.upsert({
       where: {
         chatId_userId: {
@@ -147,7 +187,6 @@ export class ChatsService {
   }
 
   async getUnreadCount(chatId: string, userId: string) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     const readState = await this.prisma.chatReadState.findUnique({
       where: {
         chatId_userId: {
@@ -157,14 +196,12 @@ export class ChatsService {
       },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const lastReadAt = readState?.lastReadAt ?? new Date(0);
 
     return this.prisma.message.count({
       where: {
         chatId,
         createdAt: {
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           gt: lastReadAt,
         },
         senderId: {
