@@ -52,8 +52,16 @@ export class ChatsService {
     const chats = await this.prisma.chat.findMany({
       where: {
         match: {
-          journeyLegId, // 🔑 the only new condition
-          OR: [{ senderId: userId }, { receiverId: userId }],
+          OR: [
+            {
+              senderId: userId,
+              senderJourneyLegId: journeyLegId,
+            },
+            {
+              receiverId: userId,
+              receiverJourneyLegId: journeyLegId,
+            },
+          ],
         },
       },
       include: {
@@ -73,11 +81,13 @@ export class ChatsService {
 
     return Promise.all(
       chats.map(async (chat) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
         const lastReadAt = chat.chatReadStates[0]?.lastReadAt ?? new Date(0);
 
         const unreadCount = await this.prisma.message.count({
           where: {
             chatId: chat.id,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             createdAt: { gt: lastReadAt },
             senderId: { not: userId },
           },

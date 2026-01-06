@@ -36,9 +36,21 @@ export class MatchesController {
     return this.matchesService.createMatch(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       senderId,
-      dto.journeyLegId,
+      dto.senderJourneyLegId,
       dto.receiverId,
+      dto.receiverJourneyLegId,
     );
+  }
+
+  @Get('pending/:journeyLegId')
+  async getPendingMatches(
+    @Req() req: express.Request,
+    @Param('journeyLegId') journeyLegId: string,
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    const userId = (req.user as any).userId;
+
+    return this.matchesService.getPendingMatchesForLeg(userId, journeyLegId);
   }
 
   @Post(':id/accept')

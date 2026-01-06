@@ -1,9 +1,12 @@
-import { IsNotEmpty } from 'class-validator';
+import { IsUUID } from 'class-validator';
 
 export class CreateMatchDto {
-  @IsNotEmpty()
-  journeyLegId: string;
+  @IsUUID()
+  senderJourneyLegId: string;
 
-  @IsNotEmpty()
+  @IsUUID()
+  receiverJourneyLegId: string;
+
+  @IsUUID()
   receiverId: string;
 }

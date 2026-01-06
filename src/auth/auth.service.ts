@@ -32,7 +32,8 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const existingUser = await this.usersService.findByEmail(dto.email);
+    const email = dto.email.trim().toLowerCase();
+    const existingUser = await this.usersService.findByEmail(email);
 
     if (existingUser) {
       throw new BadRequestException('Email already registered');
@@ -43,7 +44,7 @@ export class AuthService {
     const user = await this.usersService.createUser({
       firstName: dto.firstName,
       lastName: dto.lastName,
-      email: dto.email,
+      email: email,
       passwordHash,
       dateOfBirth: new Date(dto.dateOfBirth),
     });
@@ -59,7 +60,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.usersService.findByEmail(dto.email);
+    const email = dto.email.trim().toLowerCase();
+
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
@@ -167,8 +170,11 @@ export class AuthService {
       data: { revoked: true },
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const email = (payload.email as string).trim().toLowerCase();
+
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access
-    const user = await this.usersService.findByEmail(payload.email);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new UnauthorizedException('User not found');

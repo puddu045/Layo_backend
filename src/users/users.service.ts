@@ -8,7 +8,19 @@ export class UsersService {
 
   async findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({
-      where: { email },
+      where: { email: email.trim().toLowerCase() },
+    });
+  }
+
+  async returnUserByEmail(email: string) {
+    return this.prisma.user.findUnique({
+      where: { email: email.trim().toLowerCase() },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+      },
     });
   }
 

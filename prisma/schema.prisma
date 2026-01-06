@@ -12,7 +12,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
 enum UserRole {
   USER
   ADMIN
@@ -36,133 +35,144 @@ enum MessageType {
 }
 
 model User {
-  id           String      @id @default(uuid())
+  id           String   @id @default(uuid())
   firstName    String
   lastName     String
-  email        String      @unique
+  email        String   @unique
   passwordHash String
   dateOfBirth  DateTime
-  role         UserRole    @default(USER)
-  isActive     Boolean     @default(true)
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true)
 
-  journeys     Journey[]
-  sentMatches  Match[]     @relation("SentMatches")
-  receivedMatches Match[]  @relation("ReceivedMatches")
-  refreshTokens RefreshToken[]
-  messages      Message[] 
+  journeys        Journey[]
+  sentMatches     Match[]        @relation("SentMatches")
+  receivedMatches Match[]        @relation("ReceivedMatches")
+  refreshTokens   RefreshToken[]
+  messages        Message[]
 
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   chatReadStates ChatReadState[]
 }
 
 model Journey {
-  id            String       @id @default(uuid())
-  userId        String
-  journeyType   JourneyType
-  flightNumber  String
+  id               String      @id @default(uuid())
+  userId           String
+  journeyType      JourneyType
+  flightNumber     String
   departureAirport String
   arrivalAirport   String
-  departureTime DateTime
-  arrivalTime   DateTime
+  departureTime    DateTime
+  arrivalTime      DateTime
 
-  user          User         @relation(fields: [userId], references: [id])
-  legs        JourneyLeg[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id])
+  legs      JourneyLeg[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   @@index([flightNumber, departureTime])
 }
 
 model JourneyLeg {
-  id                String   @id @default(uuid())
-  journeyId         String
-  sequence          Int
-  flightNumber      String
-  departureAirport  String
-  arrivalAirport    String
-  departureTime     DateTime
-  arrivalTime       DateTime
+  id               String   @id @default(uuid())
+  journeyId        String
+  sequence         Int
+  flightNumber     String
+  departureAirport String
+  arrivalAirport   String
+  departureTime    DateTime
+  arrivalTime      DateTime
 
-  layoverMinutes    Int?    
+  layoverMinutes Int?
 
-  journey           Journey  @relation(fields: [journeyId], references: [id])
-  matches           Match[]
+  journey         Journey @relation(fields: [journeyId], references: [id])
+  sentMatches     Match[] @relation("SenderJourneyLeg")
+  receivedMatches Match[] @relation("ReceiverJourneyLeg")
 
-  createdAt         DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([journeyId, sequence])
   @@index([flightNumber, departureTime])
 }
 
 model Match {
-  id            String       @id @default(uuid())
-  journeyLegId     String
-  senderId      String
-  receiverId    String
-  status        MatchStatus  @default(PENDING)
+  id String @id @default(uuid())
 
-  journeyLeg   JourneyLeg  @relation(fields: [journeyLegId], references: [id])
-  sender        User         @relation("SentMatches", fields: [senderId], references: [id])
-  receiver      User         @relation("ReceivedMatches", fields: [receiverId], references: [id])
-  chat          Chat?
+  senderJourneyLegId   String
+  receiverJourneyLegId String
 
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  senderId   String
+  receiverId String
 
-  @@unique([journeyLegId, senderId, receiverId])
+  flightNumber  String
+  departureTime DateTime
+  status        MatchStatus @default(PENDING)
+
+  senderJourneyLeg JourneyLeg @relation("SenderJourneyLeg", fields: [senderJourneyLegId], references: [id])
+
+  receiverJourneyLeg JourneyLeg @relation("ReceiverJourneyLeg", fields: [receiverJourneyLegId], references: [id])
+
+  sender User @relation("SentMatches", fields: [senderId], references: [id])
+
+  receiver User @relation("ReceivedMatches", fields: [receiverId], references: [id])
+
+  chat Chat?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([senderJourneyLegId, receiverJourneyLegId, senderId, receiverId])
 }
 
 model Chat {
-  id        String     @id @default(uuid())
-  matchId  String     @unique
+  id      String @id @default(uuid())
+  matchId String @unique
 
-  match    Match      @relation(fields: [matchId], references: [id])
+  match    Match     @relation(fields: [matchId], references: [id])
   messages Message[]
 
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   chatReadStates ChatReadState[]
 }
 
 model Message {
-  id        String       @id @default(uuid())
+  id       String      @id @default(uuid())
   chatId   String
   senderId String
-  type     MessageType  @default(TEXT)
+  type     MessageType @default(TEXT)
   content  String
 
-  chat     Chat         @relation(fields: [chatId], references: [id])
-  sender   User         @relation(fields: [senderId], references: [id])
+  chat   Chat @relation(fields: [chatId], references: [id])
+  sender User @relation(fields: [senderId], references: [id])
 
-  createdAt DateTime    @default(now())
+  createdAt DateTime @default(now())
 
   @@index([chatId, createdAt])
 }
 
 model ChatReadState {
-  id        String   @id @default(uuid())
-  chatId   String
-  userId   String
+  id         String   @id @default(uuid())
+  chatId     String
+  userId     String
   lastReadAt DateTime
 
-  chat     Chat     @relation(fields: [chatId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
+  chat Chat @relation(fields: [chatId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
   @@unique([chatId, userId])
   @@index([userId])
 }
 
-
 model RefreshToken {
-  id        String     @id @default(uuid())
+  id        String   @id @default(uuid())
   userId    String
-  token     String     @unique
+  token     String   @unique
   expiresAt DateTime
-  revoked   Boolean    @default(false)
+  revoked   Boolean  @default(false)
 
-  user      User       @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id])
 
-  createdAt DateTime   @default(now())
+  createdAt DateTime @default(now())
 }
