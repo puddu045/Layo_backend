@@ -67,8 +67,8 @@ export class ChatsService {
       include: {
         match: {
           include: {
-            sender: { select: { id: true, firstName: true } },
-            receiver: { select: { id: true, firstName: true } },
+            sender: { select: { id: true, firstName: true, lastName: true } },
+            receiver: { select: { id: true, firstName: true, lastName: true } },
           },
         },
         chatReadStates: {

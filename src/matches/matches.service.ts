@@ -189,12 +189,12 @@ export class MatchesService {
       throw new ForbiddenException('You do not own this journey leg');
     }
 
-    // 2️⃣ Fetch pending matches for this leg
+    // 2️⃣ Fetch incoming pending requests (sent TO this user)
     return this.prisma.match.findMany({
       where: {
         status: 'PENDING',
-        senderId: userId,
-        senderJourneyLegId: journeyLegId,
+        receiverId: userId,
+        receiverJourneyLegId: journeyLegId,
       },
       include: {
         sender: {
@@ -208,6 +208,69 @@ export class MatchesService {
       },
       orderBy: {
         createdAt: 'desc',
+      },
+    });
+  }
+
+  async dismissPotentialMatch(
+    userId: string,
+    senderJourneyLegId: string,
+    receiverId: string,
+    receiverJourneyLegId: string,
+  ) {
+    // Same validation as createMatch
+    const senderLeg = await this.prisma.journeyLeg.findUnique({
+      where: { id: senderJourneyLegId },
+      include: { journey: true },
+    });
+
+    if (!senderLeg || senderLeg.journey.userId !== userId) {
+      throw new ForbiddenException('You do not own this journey leg');
+    }
+
+    const receiverLeg = await this.prisma.journeyLeg.findUnique({
+      where: { id: receiverJourneyLegId },
+      include: { journey: true },
+    });
+
+    if (!receiverLeg || receiverLeg.journey.userId !== receiverId) {
+      throw new ForbiddenException('Invalid receiver journey leg');
+    }
+
+    // Must be same flight
+    if (
+      senderLeg.flightNumber !== receiverLeg.flightNumber ||
+      senderLeg.departureTime.getTime() !== receiverLeg.departureTime.getTime()
+    ) {
+      throw new BadRequestException('Journey legs are not on the same flight');
+    }
+
+    // Prevent duplicates
+    const existing = await this.prisma.match.findFirst({
+      where: {
+        flightNumber: senderLeg.flightNumber,
+        departureTime: senderLeg.departureTime,
+        OR: [
+          { senderId: userId, receiverId },
+          { senderId: receiverId, receiverId: userId },
+        ],
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException('Interaction already exists');
+    }
+
+    // Create REJECTED match directly
+    return this.prisma.match.create({
+      data: {
+        senderId: userId,
+        receiverId,
+        senderJourneyLegId,
+        receiverJourneyLegId,
+        flightNumber: senderLeg.flightNumber,
+        departureTime: senderLeg.departureTime,
+        status: 'REJECTED',
       },
     });
   }

@@ -11,6 +11,7 @@ import { MatchesService } from './matches.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import express from 'express';
 import { CreateMatchDto } from './dto/create-match.dto';
+import { DismissMatchDto } from './dto/dismiss-match.dto';
 
 @Controller('matches')
 @UseGuards(JwtAuthGuard)
@@ -36,6 +37,23 @@ export class MatchesController {
     return this.matchesService.createMatch(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       senderId,
+      dto.senderJourneyLegId,
+      dto.receiverId,
+      dto.receiverJourneyLegId,
+    );
+  }
+
+  @Post('dismiss')
+  async dismissPotentialMatch(
+    @Req() req: express.Request,
+    @Body() dto: DismissMatchDto,
+  ) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    const userId = (req.user as any).userId;
+
+    return this.matchesService.dismissPotentialMatch(
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      userId,
       dto.senderJourneyLegId,
       dto.receiverId,
       dto.receiverJourneyLegId,
