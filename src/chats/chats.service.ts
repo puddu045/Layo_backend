@@ -5,6 +5,40 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ChatsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async canUserAccessChat(userId: string, chatId: string): Promise<boolean> {
+    const chat = await this.prisma.chat.findUnique({
+      where: { id: chatId },
+      include: { match: true },
+    });
+
+    if (!chat) return false;
+
+    return chat.match.senderId === userId || chat.match.receiverId === userId;
+  }
+
+  async createMessage(input: {
+    chatId: string;
+    senderId: string;
+    content: string;
+  }) {
+    const { chatId, senderId, content } = input;
+
+    const canAccess = await this.canUserAccessChat(senderId, chatId);
+
+    if (!canAccess) {
+      throw new ForbiddenException('You do not have access to this chat');
+    }
+
+    return this.prisma.message.create({
+      data: {
+        chatId,
+        senderId,
+        content,
+        type: 'TEXT',
+      },
+    });
+  }
+
   async getChatsForUser(userId: string) {
     const chats = await this.prisma.chat.findMany({
       where: {
@@ -153,28 +187,29 @@ export class ChatsService {
   }
 
   async sendMessage(chatId: string, senderId: string, content: string) {
-    const chat = await this.prisma.chat.findUnique({
-      where: { id: chatId },
-      include: {
-        match: true,
-      },
-    });
+    return this.createMessage({ chatId, senderId, content });
+    // const chat = await this.prisma.chat.findUnique({
+    //   where: { id: chatId },
+    //   include: {
+    //     match: true,
+    //   },
+    // });
 
-    if (
-      !chat ||
-      (chat.match.senderId !== senderId && chat.match.receiverId !== senderId)
-    ) {
-      throw new ForbiddenException('You do not have access to this chat');
-    }
+    // if (
+    //   !chat ||
+    //   (chat.match.senderId !== senderId && chat.match.receiverId !== senderId)
+    // ) {
+    //   throw new ForbiddenException('You do not have access to this chat');
+    // }
 
-    return this.prisma.message.create({
-      data: {
-        chatId,
-        senderId,
-        content,
-        type: 'TEXT',
-      },
-    });
+    // return this.prisma.message.create({
+    //   data: {
+    //     chatId,
+    //     senderId,
+    //     content,
+    //     type: 'TEXT',
+    //   },
+    // });
   }
 
   async markChatAsRead(chatId: string, userId: string) {
