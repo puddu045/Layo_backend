@@ -109,4 +109,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
   }
+
+  @SubscribeMessage('mark_chat_read')
+  async handleMarkChatRead(
+    @MessageBody() body: { chatId: string },
+    @ConnectedSocket() socket: AuthenticatedSocket,
+  ) {
+    await this.chatsService.markChatAsRead(body.chatId, socket.data.userId);
+  }
 }
