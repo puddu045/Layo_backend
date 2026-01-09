@@ -26,8 +26,8 @@ interface AuthenticatedSocket extends Socket {
 }
 
 @WebSocketGateway({
+  namespace: '/chat',
   cors: {
-    namespace: '/chat',
     origin: '*',
   },
 })
@@ -83,28 +83,30 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('send_message')
   async handleSendMessage(
-    @MessageBody()
-    body: {
-      tempId: string;
-      chatId: string;
-      content: string;
-    },
+    @MessageBody() body: { tempId: string; chatId: string; content: string },
     @ConnectedSocket() socket: AuthenticatedSocket,
   ) {
     const userId = socket.data.userId;
 
-    const message = await this.chatsService.createMessage({
-      chatId: body.chatId,
-      senderId: userId,
-      content: body.content,
-    });
+    try {
+      const message = await this.chatsService.createMessage({
+        chatId: body.chatId,
+        senderId: userId,
+        content: body.content,
+      });
 
-    this.server.to(`chat:${body.chatId}`).emit('new_message', {
-      ...message,
-      tempId: body.tempId,
-    });
+      this.server.to(`chat:${body.chatId}`).emit('new_message', {
+        ...message,
+        tempId: body.tempId,
+      });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    return message;
+      return message;
+    } catch (err) {
+      console.error('MESSAGE SAVE FAILED', {
+        chatId: body.chatId,
+        userId,
+        err,
+      });
+    }
   }
 }

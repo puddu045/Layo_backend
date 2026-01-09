@@ -15,6 +15,12 @@ async function bootstrap() {
   );
 
   app.use(cookieParser());
+  app.enableCors({
+    origin: ['http://localhost:8081', 'http://192.168.1.202:8081'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
 
   await app.listen(process.env.PORT ?? 3000);
 }

@@ -18,17 +18,18 @@ import { DismissMatchDto } from './dto/dismiss-match.dto';
 export class MatchesController {
   constructor(private readonly matchesService: MatchesService) {}
 
-  @Get('potential/:journeyLegId')
-  async getPotentialMatches(
+  @Get('journey/:journeyId')
+  async getMatchesByJourney(
     @Req() req: express.Request,
-    @Param('journeyLegId') journeyLegId: string,
+    @Param('journeyId') journeyId: string,
   ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const userId = (req.user as any).userId;
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return this.matchesService.findPotentialMatches(userId, journeyLegId);
+    return this.matchesService.findMatchesByJourney(userId, journeyId);
   }
+
   @Post()
   async sendMatch(@Req() req: express.Request, @Body() dto: CreateMatchDto) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
@@ -37,9 +38,9 @@ export class MatchesController {
     return this.matchesService.createMatch(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       senderId,
-      dto.senderJourneyLegId,
+      dto.senderJourneyId,
       dto.receiverId,
-      dto.receiverJourneyLegId,
+      dto.receiverJourneyId,
     );
   }
 
@@ -54,21 +55,21 @@ export class MatchesController {
     return this.matchesService.dismissPotentialMatch(
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
       userId,
-      dto.senderJourneyLegId,
+      dto.senderJourneyId,
       dto.receiverId,
-      dto.receiverJourneyLegId,
+      dto.receiverJourneyId,
     );
   }
 
-  @Get('pending/:journeyLegId')
+  @Get('pending/:journeyId')
   async getPendingMatches(
     @Req() req: express.Request,
-    @Param('journeyLegId') journeyLegId: string,
+    @Param('journeyId') journeyId: string,
   ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const userId = (req.user as any).userId;
 
-    return this.matchesService.getPendingMatchesForLeg(userId, journeyLegId);
+    return this.matchesService.getPendingMatchesForJourney(userId, journeyId);
   }
 
   @Post(':id/accept')

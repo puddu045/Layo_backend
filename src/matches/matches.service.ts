@@ -7,35 +7,44 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { LayoverMatchResult } from './dto/layover-match-result.dto';
+import { SameFlightMatchResult } from './dto/same-flight-match-result.dto';
 
 @Injectable()
 export class MatchesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findPotentialMatches(userId: string, journeyLegId: string) {
-    const currentLeg = await this.prisma.journeyLeg.findUnique({
-      where: { id: journeyLegId },
-      include: {
-        journey: true,
-      },
+  async findMatchesByJourney(userId: string, journeyId: string) {
+    const MIN_OVERLAP_MS = 90 * 60 * 1000; // 1.5 hours
+
+    // 1️⃣ Load journey + ownership
+    const journey = await this.prisma.journey.findUnique({
+      where: { id: journeyId },
+      include: { legs: true },
     });
 
-    if (!currentLeg) {
-      throw new NotFoundException('Journey leg not found');
+    if (!journey) {
+      throw new NotFoundException('Journey not found');
     }
 
-    if (currentLeg.journey.userId !== userId) {
-      throw new ForbiddenException('You do not own the provided journey leg');
+    if (journey.userId !== userId) {
+      throw new ForbiddenException('You do not own this journey');
     }
 
-    /**
-     * STEP 1️⃣ Find users already interacted with on this exact leg
-     */
+    // 2️⃣ Fetch matches involving this user ON THIS JOURNEY
     const existingMatches = await this.prisma.match.findMany({
       where: {
-        flightNumber: currentLeg.flightNumber,
-        departureTime: currentLeg.departureTime,
-        OR: [{ senderId: userId }, { receiverId: userId }],
+        AND: [
+          {
+            OR: [{ senderId: userId }, { receiverId: userId }],
+          },
+          {
+            OR: [
+              { senderJourneyId: journeyId },
+              { receiverJourneyId: journeyId },
+            ],
+          },
+        ],
       },
       select: {
         senderId: true,
@@ -49,90 +58,161 @@ export class MatchesService {
       if (m.receiverId !== userId) excludedUserIds.add(m.receiverId);
     }
 
-    /**
-     * STEP 2️⃣ SAME FLIGHT, SAME LEG MATCHES ONLY
-     */
-    const sameFlightMatches = await this.prisma.journeyLeg.findMany({
-      where: {
-        id: { not: journeyLegId },
+    const sameFlightMatches: SameFlightMatchResult[] = [];
+    const layoverMatches: LayoverMatchResult[] = [];
 
-        flightNumber: currentLeg.flightNumber,
-        departureTime: currentLeg.departureTime,
-        departureAirport: currentLeg.departureAirport,
-        arrivalAirport: currentLeg.arrivalAirport,
-
-        journey: {
-          userId: {
-            not: userId,
-            notIn: Array.from(excludedUserIds),
+    // 3️⃣ Process each leg
+    for (const leg of journey.legs) {
+      /**
+       * SAME FLIGHT MATCHES
+       */
+      const sameFlightLegs = await this.prisma.journeyLeg.findMany({
+        where: {
+          id: { not: leg.id },
+          flightNumber: leg.flightNumber,
+          departureAirport: leg.departureAirport,
+          arrivalAirport: leg.arrivalAirport,
+          departureTime: {
+            gte: new Date(leg.departureTime.getTime() - 5 * 60 * 1000),
+            lte: new Date(leg.departureTime.getTime() + 5 * 60 * 1000),
+          },
+          journey: {
+            userId: {
+              notIn: [userId, ...excludedUserIds],
+            },
           },
         },
-      },
-      include: {
-        journey: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
+        include: {
+          journey: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    return sameFlightMatches;
+      for (const otherLeg of sameFlightLegs) {
+        sameFlightMatches.push({
+          myJourneyLeg: leg,
+          otherJourneyLeg: otherLeg,
+          otherUser: otherLeg.journey.user,
+        });
+      }
+
+      /**
+       * LAYOVER MATCHES
+       */
+      if (!leg.layoverMinutes) continue;
+
+      const currentWindow = this.getLayoverWindow(leg);
+      if (!currentWindow) continue;
+
+      const candidateLegs = await this.prisma.journeyLeg.findMany({
+        where: {
+          id: { not: leg.id },
+          arrivalAirport: leg.arrivalAirport,
+          layoverMinutes: { not: null },
+          journey: {
+            userId: {
+              notIn: [userId, ...excludedUserIds],
+            },
+          },
+        },
+        include: {
+          journey: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const otherLeg of candidateLegs) {
+        const otherWindow = this.getLayoverWindow(otherLeg);
+        if (!otherWindow) continue;
+
+        const overlapStart = Math.max(
+          currentWindow.start.getTime(),
+          otherWindow.start.getTime(),
+        );
+
+        const overlapEnd = Math.min(
+          currentWindow.end.getTime(),
+          otherWindow.end.getTime(),
+        );
+
+        const overlapMs = overlapEnd - overlapStart;
+
+        if (overlapMs >= MIN_OVERLAP_MS) {
+          layoverMatches.push({
+            journeyLegId: otherLeg.id,
+            arrivalAirport: otherLeg.arrivalAirport,
+            overlapMinutes: Math.floor(overlapMs / 60000),
+            user: otherLeg.journey.user,
+            leg: otherLeg,
+          });
+        }
+      }
+    }
+
+    return {
+      sameFlightMatches,
+      layoverMatches,
+    };
   }
 
   async createMatch(
     senderId: string,
-    senderJourneyLegId: string,
+    senderJourneyId: string,
     receiverId: string,
-    receiverJourneyLegId: string,
+    receiverJourneyId: string,
   ) {
     if (senderId === receiverId) {
       throw new ConflictException('Cannot match with yourself');
     }
 
-    // 1️⃣ Load sender journey leg and verify ownership
-    const senderLeg = await this.prisma.journeyLeg.findUnique({
-      where: { id: senderJourneyLegId },
-      include: { journey: true },
+    const senderJourney = await this.prisma.journey.findUnique({
+      where: { id: senderJourneyId },
     });
 
-    if (!senderLeg || senderLeg.journey.userId !== senderId) {
-      throw new ForbiddenException(
-        'Sender does not own the provided journey leg',
-      );
+    if (!senderJourney || senderJourney.userId !== senderId) {
+      throw new ForbiddenException('Sender does not own this journey');
     }
 
-    // 2️⃣ Load receiver journey leg and verify ownership
-    const receiverLeg = await this.prisma.journeyLeg.findUnique({
-      where: { id: receiverJourneyLegId },
-      include: { journey: true },
+    const receiverJourney = await this.prisma.journey.findUnique({
+      where: { id: receiverJourneyId },
     });
 
-    if (!receiverLeg || receiverLeg.journey.userId !== receiverId) {
-      throw new ForbiddenException(
-        'Receiver does not own the provided journey leg',
-      );
+    if (!receiverJourney || receiverJourney.userId !== receiverId) {
+      throw new ForbiddenException('Receiver does not own this journey');
     }
 
-    // 3️⃣ Validate same flight
+    // Same flight validation
     if (
-      senderLeg.flightNumber !== receiverLeg.flightNumber ||
-      senderLeg.departureTime.getTime() !== receiverLeg.departureTime.getTime()
+      senderJourney.flightNumber !== receiverJourney.flightNumber ||
+      senderJourney.departureTime.getTime() !==
+        receiverJourney.departureTime.getTime()
     ) {
-      throw new BadRequestException('Journey legs are not on the same flight');
+      throw new BadRequestException('Journeys are not on the same flight');
     }
 
-    // 4️⃣ Prevent duplicate interaction on this flight
-    const existingMatch = await this.prisma.match.findFirst({
+    // Prevent duplicate interaction
+    const existing = await this.prisma.match.findFirst({
       where: {
-        flightNumber: senderLeg.flightNumber,
-        departureTime: senderLeg.departureTime,
+        flightNumber: senderJourney.flightNumber,
+        departureTime: senderJourney.departureTime,
         OR: [
           { senderId, receiverId },
           { senderId: receiverId, receiverId: senderId },
@@ -140,21 +220,20 @@ export class MatchesService {
       },
     });
 
-    if (existingMatch) {
+    if (existing) {
       throw new ConflictException(
         'You have already interacted with this user on this flight',
       );
     }
 
-    // 5️⃣ Create match
     return this.prisma.match.create({
       data: {
         senderId,
         receiverId,
-        senderJourneyLegId,
-        receiverJourneyLegId,
-        flightNumber: senderLeg.flightNumber,
-        departureTime: senderLeg.departureTime,
+        senderJourneyId,
+        receiverJourneyId,
+        flightNumber: senderJourney.flightNumber,
+        departureTime: senderJourney.departureTime,
         status: 'PENDING',
       },
     });
@@ -174,102 +253,74 @@ export class MatchesService {
     return { start, end };
   }
 
-  async getPendingMatchesForLeg(userId: string, journeyLegId: string) {
-    // 1️⃣ Verify leg exists and ownership
-    const leg = await this.prisma.journeyLeg.findUnique({
-      where: { id: journeyLegId },
-      include: { journey: true },
+  async getPendingMatchesForJourney(userId: string, journeyId: string) {
+    const journey = await this.prisma.journey.findUnique({
+      where: { id: journeyId },
     });
 
-    if (!leg) {
-      throw new NotFoundException('Journey leg not found');
+    if (!journey) {
+      throw new NotFoundException('Journey not found');
     }
 
-    if (leg.journey.userId !== userId) {
-      throw new ForbiddenException('You do not own this journey leg');
+    if (journey.userId !== userId) {
+      throw new ForbiddenException('You do not own this journey');
     }
 
-    // 2️⃣ Fetch incoming pending requests (sent TO this user)
     return this.prisma.match.findMany({
       where: {
         status: 'PENDING',
         receiverId: userId,
-        receiverJourneyLegId: journeyLegId,
+        receiverJourneyId: journeyId,
       },
       include: {
         sender: {
           select: { id: true, firstName: true, lastName: true },
         },
-        receiver: {
-          select: { id: true, firstName: true, lastName: true },
-        },
-        senderJourneyLeg: true,
-        receiverJourneyLeg: true,
+        senderJourney: true,
+        receiverJourney: true,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
   }
 
   async dismissPotentialMatch(
     userId: string,
-    senderJourneyLegId: string,
+    senderJourneyId: string,
     receiverId: string,
-    receiverJourneyLegId: string,
+    receiverJourneyId: string,
   ) {
-    // Same validation as createMatch
-    const senderLeg = await this.prisma.journeyLeg.findUnique({
-      where: { id: senderJourneyLegId },
-      include: { journey: true },
+    const senderJourney = await this.prisma.journey.findUnique({
+      where: { id: senderJourneyId },
     });
 
-    if (!senderLeg || senderLeg.journey.userId !== userId) {
-      throw new ForbiddenException('You do not own this journey leg');
+    if (!senderJourney || senderJourney.userId !== userId) {
+      throw new ForbiddenException('You do not own this journey');
     }
 
-    const receiverLeg = await this.prisma.journeyLeg.findUnique({
-      where: { id: receiverJourneyLegId },
-      include: { journey: true },
+    const receiverJourney = await this.prisma.journey.findUnique({
+      where: { id: receiverJourneyId },
     });
 
-    if (!receiverLeg || receiverLeg.journey.userId !== receiverId) {
-      throw new ForbiddenException('Invalid receiver journey leg');
+    if (!receiverJourney || receiverJourney.userId !== receiverId) {
+      throw new ForbiddenException('Invalid receiver journey');
     }
 
-    // Must be same flight
     if (
-      senderLeg.flightNumber !== receiverLeg.flightNumber ||
-      senderLeg.departureTime.getTime() !== receiverLeg.departureTime.getTime()
+      senderJourney.flightNumber !== receiverJourney.flightNumber ||
+      senderJourney.departureTime.getTime() !==
+        receiverJourney.departureTime.getTime()
     ) {
-      throw new BadRequestException('Journey legs are not on the same flight');
+      throw new BadRequestException('Journeys are not on the same flight');
     }
 
-    // Prevent duplicates
-    const existing = await this.prisma.match.findFirst({
-      where: {
-        flightNumber: senderLeg.flightNumber,
-        departureTime: senderLeg.departureTime,
-        OR: [
-          { senderId: userId, receiverId },
-          { senderId: receiverId, receiverId: userId },
-        ],
-      },
-    });
-
-    if (existing) {
-      throw new ConflictException('Interaction already exists');
-    }
-
-    // Create REJECTED match directly
     return this.prisma.match.create({
       data: {
         senderId: userId,
         receiverId,
-        senderJourneyLegId,
-        receiverJourneyLegId,
-        flightNumber: senderLeg.flightNumber,
-        departureTime: senderLeg.departureTime,
+        senderJourneyId,
+        receiverJourneyId,
+        flightNumber: senderJourney.flightNumber,
+        departureTime: senderJourney.departureTime,
         status: 'REJECTED',
       },
     });

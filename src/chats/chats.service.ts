@@ -82,18 +82,18 @@ export class ChatsService {
     );
   }
 
-  async getChatsForUserByJourneyLeg(userId: string, journeyLegId: string) {
+  async getChatsForUserByJourney(userId: string, journeyId: string) {
     const chats = await this.prisma.chat.findMany({
       where: {
         match: {
           OR: [
             {
               senderId: userId,
-              senderJourneyLegId: journeyLegId,
+              senderJourneyId: journeyId,
             },
             {
               receiverId: userId,
-              receiverJourneyLegId: journeyLegId,
+              receiverJourneyId: journeyId,
             },
           ],
         },

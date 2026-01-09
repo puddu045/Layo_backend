@@ -26,16 +26,16 @@ export class ChatsController {
     return this.chatsService.getChatsForUser(userId);
   }
 
-  @Get('by-leg/:journeyLegId')
-  async getChatsByJourneyLeg(
+  @Get('journey/:journeyId')
+  async getChatsByJourney(
     @Req() req: express.Request,
-    @Param('journeyLegId') journeyLegId: string,
+    @Param('journeyId') journeyId: string,
   ) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
     const userId = (req.user as any).userId;
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    return this.chatsService.getChatsForUserByJourneyLeg(userId, journeyLegId);
+    return this.chatsService.getChatsForUserByJourney(userId, journeyId);
   }
 
   @Get(':id/messages')

@@ -67,6 +67,8 @@ model Journey {
   arrivalTime      DateTime
 
   user      User         @relation(fields: [userId], references: [id])
+  sentMatches     Match[] @relation("SenderJourney")
+  receivedMatches Match[] @relation("ReceiverJourney")
   legs      JourneyLeg[]
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -87,8 +89,6 @@ model JourneyLeg {
   layoverMinutes Int?
 
   journey         Journey @relation(fields: [journeyId], references: [id])
-  sentMatches     Match[] @relation("SenderJourneyLeg")
-  receivedMatches Match[] @relation("ReceiverJourneyLeg")
 
   createdAt DateTime @default(now())
 
@@ -99,22 +99,20 @@ model JourneyLeg {
 model Match {
   id String @id @default(uuid())
 
-  senderJourneyLegId   String
-  receiverJourneyLegId String
+  senderJourneyId   String
+  receiverJourneyId String
 
   senderId   String
   receiverId String
 
-  flightNumber  String
-  departureTime DateTime
-  status        MatchStatus @default(PENDING)
+  flightNumber   String
+  departureTime  DateTime
+  status         MatchStatus @default(PENDING)
 
-  senderJourneyLeg JourneyLeg @relation("SenderJourneyLeg", fields: [senderJourneyLegId], references: [id])
+  senderJourney   Journey @relation("SenderJourney", fields: [senderJourneyId], references: [id])
+  receiverJourney Journey @relation("ReceiverJourney", fields: [receiverJourneyId], references: [id])
 
-  receiverJourneyLeg JourneyLeg @relation("ReceiverJourneyLeg", fields: [receiverJourneyLegId], references: [id])
-
-  sender User @relation("SentMatches", fields: [senderId], references: [id])
-
+  sender   User @relation("SentMatches", fields: [senderId], references: [id])
   receiver User @relation("ReceivedMatches", fields: [receiverId], references: [id])
 
   chat Chat?
@@ -122,8 +120,10 @@ model Match {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([senderJourneyLegId, receiverJourneyLegId, senderId, receiverId])
+  @@unique([senderJourneyId, receiverJourneyId, senderId, receiverId])
+  @@index([flightNumber, departureTime])
 }
+
 
 model Chat {
   id      String @id @default(uuid())

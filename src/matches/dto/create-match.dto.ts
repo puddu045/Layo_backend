@@ -2,10 +2,10 @@ import { IsUUID } from 'class-validator';
 
 export class CreateMatchDto {
   @IsUUID()
-  senderJourneyLegId: string;
+  senderJourneyId: string;
 
   @IsUUID()
-  receiverJourneyLegId: string;
+  receiverJourneyId: string;
 
   @IsUUID()
   receiverId: string;
